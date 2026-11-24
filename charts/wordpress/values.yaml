@@ -1,0 +1,86 @@
+# The chart never creates the database passwords. Create this Secret first
+# (see the README). It needs the two keys named below.
+auth:
+  existingSecret: wordpress-db
+  rootPasswordKey: mysql-root-password
+  passwordKey: mysql-password
+
+# The database that MySQL creates and WordPress uses. WordPress connects as
+# this user, never as root.
+database:
+  name: wordpress
+  user: wordpress
+
+wordpress:
+  # More than one replica needs a ReadWriteMany volume, because every replica
+  # mounts the same volume with the WordPress files.
+  replicaCount: 1
+  image:
+    repository: wordpress
+    tag: 7.1.5-php8.4-apache
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: true
+    size: 10Gi
+    # Empty means the default StorageClass of the cluster.
+    storageClassName: ""
+    accessModes:
+      - ReadWriteOnce
+    # Use a PersistentVolumeClaim that already exists instead of creating one.
+    existingClaim: ""
+    # Helm leaves the claim in place on uninstall, so the site files survive.
+    keepOnUninstall: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  # Extra environment variables, for example WORDPRESS_CONFIG_EXTRA.
+  extraEnv: []
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+
+mysql:
+  image:
+    repository: mysql
+    tag: 8.4.13
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: wordpress.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Only the WordPress pods can reach the database pod on port 3306. It has an
+# effect when the cluster network plugin enforces NetworkPolicy objects.
+networkPolicy:
+  enabled: true

@@ -1,0 +1,106 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  chart:
+    name: Lint, render and validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.1
+
+      - name: Lint the chart
+        run: |
+          helm lint charts/wordpress
+          helm lint charts/wordpress -f examples/values-ingress.yaml
+
+      - name: Render the chart with three sets of values
+        run: |
+          helm template wordpress charts/wordpress > rendered.yaml
+          helm template wordpress charts/wordpress -f examples/values-ingress.yaml > rendered-ingress.yaml
+          helm template wordpress charts/wordpress \
+            --set wordpress.persistence.enabled=false \
+            --set mysql.persistence.enabled=false > rendered-nopersistence.yaml
+
+      - name: Validate the manifests with kubeconform
+        run: |
+          docker run --rm -v "$PWD:/work:ro" ghcr.io/yannh/kubeconform:v0.7.0 \
+            -strict -summary -kubernetes-version 1.33.0 \
+            /work/rendered.yaml /work/rendered-ingress.yaml /work/rendered-nopersistence.yaml
+
+  install:
+    name: Install in a kind cluster and run the Helm test
+    runs-on: ubuntu-latest
+    needs: [chart]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.1
+
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: wordpress
+
+      - name: Create the namespace and the database Secret
+        run: |
+          kubectl create namespace wordpress
+          kubectl --namespace wordpress create secret generic wordpress-db \
+            --from-literal=mysql-root-password="$(openssl rand -hex 16)" \
+            --from-literal=mysql-password="$(openssl rand -hex 16)"
+
+      - name: Install the chart
+        run: helm install wordpress charts/wordpress --namespace wordpress --wait --timeout 10m
+
+      - name: Run the Helm test
+        run: helm test wordpress --namespace wordpress --timeout 5m --logs
+
+      - name: Show the state of the namespace after a failure
+        if: failure()
+        run: |
+          kubectl --namespace wordpress get pods,pvc,events
+          kubectl --namespace wordpress describe pods
+          kubectl --namespace wordpress logs --selector app.kubernetes.io/instance=wordpress --all-containers --prefix --tail=200
+
+  publish:
+    name: Publish the chart to GHCR
+    runs-on: ubuntu-latest
+    needs: [chart, install]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.1
+
+      - name: Log in to GHCR
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$REGISTRY_TOKEN" | helm registry login ghcr.io --username "$REGISTRY_USER" --password-stdin
+
+      - name: Check the version, package and push
+        run: |
+          chart_version="$(helm show chart charts/wordpress | awk '/^version:/ {print $2}')"
+          if [ "$chart_version" != "${GITHUB_REF_NAME#v}" ]; then
+            echo "Chart.yaml has version $chart_version but the tag is $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          helm package charts/wordpress
+          helm push "wordpress-${chart_version}.tgz" "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts"

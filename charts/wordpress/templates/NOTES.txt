@@ -1,0 +1,16 @@
+WordPress {{ .Chart.AppVersion }} is installed as the release "{{ .Release.Name }}" in the namespace "{{ .Release.Namespace }}".
+{{- if .Values.ingress.enabled }}
+
+Open it on:
+{{- range .Values.ingress.hosts }}
+  {{ if $.Values.ingress.tls }}https{{ else }}http{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+
+Open it on http://localhost:8080 with:
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "wordpress.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}
+
+The database passwords come from the Secret "{{ .Values.auth.existingSecret }}".
+Run the connection test with:
+  helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}

@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "wordpress.fullname" . }}
+  labels:
+    {{- include "wordpress.labels" (dict "root" . "component" "wordpress") | nindent 4 }}
+spec:
+  replicas: {{ .Values.wordpress.replicaCount }}
+  # The volume can be mounted by one node at a time, so a new pod starts only
+  # after the old one has stopped.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "wordpress.selectorLabels" (dict "root" . "component" "wordpress") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "wordpress.selectorLabels" (dict "root" . "component" "wordpress") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.wordpress.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: wordpress
+          image: "{{ .Values.wordpress.image.repository }}:{{ .Values.wordpress.image.tag }}"
+          imagePullPolicy: {{ .Values.wordpress.image.pullPolicy }}
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: {{ include "wordpress.mysqlName" . | quote }}
+            - name: WORDPRESS_DB_NAME
+              value: {{ .Values.database.name | quote }}
+            - name: WORDPRESS_DB_USER
+              value: {{ .Values.database.user | quote }}
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.passwordKey }}
+            {{- with .Values.wordpress.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 80
+          # The first start copies the WordPress files into the volume.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          # The login page returns an error while the database is unreachable,
+          # so the pod receives no traffic until the database answers.
+          readinessProbe:
+            httpGet:
+              path: /wp-login.php
+              port: http
+            periodSeconds: 10
+          # The restart check only looks at the port, so a database outage does
+          # not restart WordPress.
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /var/www/html
+          resources:
+            {{- toYaml .Values.wordpress.resources | nindent 12 }}
+          {{- with .Values.wordpress.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          {{- if .Values.wordpress.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "wordpress.claimName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: wordpress
+description: WordPress with its own MySQL database, persistent storage, an optional Ingress and a NetworkPolicy that limits access to the database.
+type: application
+version: 0.1.0
+# WordPress version. The image tags in values.yaml must match it.
+appVersion: "7.1.5"
+keywords:
+  - wordpress
+  - mysql

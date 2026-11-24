@@ -1,0 +1,19 @@
+# Example values: publish WordPress through an Ingress with TLS.
+# Use with: helm install wordpress charts/wordpress -f examples/values-ingress.yaml
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    # Needs cert-manager and a ClusterIssuer with this name.
+    cert-manager.io/cluster-issuer: letsencrypt
+    # WordPress uploads can be larger than the 1m default of ingress-nginx.
+    nginx.ingress.kubernetes.io/proxy-body-size: 64m
+  hosts:
+    - host: blog.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: blog-example-com-tls
+      hosts:
+        - blog.example.com

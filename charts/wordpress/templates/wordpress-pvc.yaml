@@ -1,0 +1,21 @@
+{{- if and .Values.wordpress.persistence.enabled (not .Values.wordpress.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "wordpress.claimName" . }}
+  labels:
+    {{- include "wordpress.labels" (dict "root" . "component" "wordpress") | nindent 4 }}
+  {{- if .Values.wordpress.persistence.keepOnUninstall }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.wordpress.persistence.accessModes | nindent 4 }}
+  {{- with .Values.wordpress.persistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.wordpress.persistence.size }}
+{{- end }}

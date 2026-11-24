@@ -1,0 +1,13 @@
+.DS_Store
+*.swp
+
+# Local output of make render and the CI steps
+rendered*.yaml
+
+# Packaged charts
+*.tgz
+
+# Never commit credentials or kubeconfigs
+*.kubeconfig
+kubeconfig
+.env

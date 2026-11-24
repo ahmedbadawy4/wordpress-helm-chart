@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "wordpress.fullname" . }}-test
+  labels:
+    {{- include "wordpress.labels" (dict "root" . "component" "test") | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  containers:
+    - name: wget
+      image: busybox:1.37.0
+      # Fails on an HTTP error status. The login page needs the database, so
+      # this checks WordPress and its connection to MySQL together.
+      command: ["wget", "-q", "-O", "/dev/null", "-T", "15"]
+      args:
+        - "http://{{ include "wordpress.fullname" . }}:{{ .Values.service.port }}/wp-login.php"
