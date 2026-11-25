@@ -166,3 +166,7 @@ Makefile
 - **Database passwords are read once.** MySQL creates the database user on its first start with an empty volume. Changing the Secret later does not change the password inside an existing database.
 - **No TLS inside the cluster.** Traffic between the Ingress, WordPress and MySQL is plain. TLS ends at the Ingress.
 - **NetworkPolicy needs support from the cluster.** The policy has an effect only when the network plugin enforces NetworkPolicy objects.
+
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE).
